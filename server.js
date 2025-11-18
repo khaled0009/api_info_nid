@@ -5,10 +5,13 @@
 
 const express = require("express");
 const bodyParser = require("body-parser");
-const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
 const fs = require("fs");
 const path = require("path");
+
+// Selenium
+const { Builder, By, until } = require("selenium-webdriver");
+const chrome = require("selenium-webdriver/chrome");
 
 // ==================== إعدادات عامة ====================
 const PORT = process.env.PORT || 3000;
@@ -20,6 +23,21 @@ const PUBLIC_DIR = "./public/assets";
 const LOG_FILE = "./log.txt";
 const MAX_BROWSERS = 3;
 const QUEUE_INTERVAL = 500;
+
+// مسارات Chrome / ChromeDriver (تقدر تغيّرها أو تستخدم متغيرات بيئة)
+const isWin = process.platform === "win32";
+
+const CHROME_BIN =
+  process.env.CHROME_BIN ||
+  (isWin
+    ? path.join(__dirname, "chromebin-win", "chrome.exe")
+    : path.join(__dirname, "chromebin-linux", "chrome"));
+
+const CHROMEDRIVER_PATH =
+  process.env.CHROMEDRIVER_PATH ||
+  (isWin
+    ? path.join(__dirname, "chromedriver-win", "chromedriver.exe")
+    : path.join(__dirname, "chromedriver-linux", "chromedriver"));
 
 // إنشاء المجلدات لو مش موجودة
 for (const dir of [RESULTS_DIR, PUBLIC_DIR]) {
@@ -49,7 +67,7 @@ function extractInfo(text) {
     address: get([/العنوان[:\s\-]*([^\n\r]+)/]),
     sub_committee_number: get([/اللجنة[:\s\-]*([^\n\r]+)/]),
     list_number: get([/قائمة[:\s\-]*([^\n\r]+)/]),
-    voting_date: get([/(\d+\s*-\s*\d+\s*نوفمبر)/]),
+    voting_date: get([/(\d+\s*-\s*\d+\\s*نوفمبر)/]),
     attendance_density: get([/الكثافة|متاحة\s+على\s+التطبيق[^\n\r]*/])
   };
 }
@@ -84,21 +102,38 @@ async function getSchoolLocation(info) {
   }
 }
 
-// ==================== نظام الـ Pool ====================
+// ==================== إعداد Selenium + Pool ====================
 let browserPool = [];
 let busyBrowsers = new Set();
 
 async function createBrowser() {
-  return await puppeteer.launch({
-    headless: "new",
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
-  });
+  // إعداد Chrome headless
+  const options = new chrome.Options();
+  if (CHROME_BIN) {
+    options.setChromeBinaryPath(CHROME_BIN);
+  }
+
+  options.addArguments(
+    "--headless=new",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu"
+  );
+
+  const service = new chrome.ServiceBuilder(CHROMEDRIVER_PATH).build();
+  chrome.setDefaultService(service);
+
+  const driver = await new Builder()
+    .forBrowser("chrome")
+    .setChromeOptions(options)
+    .build();
+
+  log("🔗 تم إنشاء متصفح Selenium جديد");
+  return driver;
 }
 
-
-
 async function initBrowserPool() {
-  log("🔧 جاري إنشاء pool المتصفحات...");
+  log("🔧 جاري إنشاء pool المتصفحات (Selenium)...");
   for (let i = 0; i < MAX_BROWSERS; i++) {
     const browser = await createBrowser();
     browserPool.push(browser);
@@ -132,14 +167,13 @@ async function processQueue() {
   busyBrowsers.add(browser);
 
   try {
-    const result = await queryElection(browser, nid);
-    const geo = await getSchoolLocation(result.info);
-
-    // حفظ screenshot على السيرفر
+    // تجهيز اسم ومسار الـ screenshot زى ما كان في الكود الأصلي
     const screenshotName = `${nid}_${Date.now()}.png`;
     const screenshotPath = path.join(PUBLIC_DIR, screenshotName);
-    await result.page.screenshot({ path: screenshotPath });
-    await result.page.close();
+
+    // استعلام موقع الانتخابات + screenshot
+    const info = await queryElection(browser, nid, screenshotPath);
+    const geo = await getSchoolLocation(info);
 
     const screenshotLink = `https://denisse-tombless-unseriously.ngrok-free.dev/assets/${screenshotName}`;
 
@@ -147,7 +181,7 @@ async function processQueue() {
       order,
       nid,
       timestamp: new Date().toISOString(),
-      ...result.info,
+      ...info,
       school_location: geo,
       screenshot_link: screenshotLink
     };
@@ -173,7 +207,9 @@ async function processQueue() {
     res.json({ ok: true, data: payload });
   } catch (err) {
     log(`❌ [#${order}] فشل تنفيذ الاستعلام ${nid}: ${err.message}`);
-    res.status(500).json({ ok: false, message: "Query failed", error: err.message });
+    res
+      .status(500)
+      .json({ ok: false, message: "Query failed", error: err.message });
   } finally {
     busyBrowsers.delete(browser);
     processingCount--;
@@ -181,30 +217,54 @@ async function processQueue() {
   }
 }
 
-// ==================== الدالة الأساسية ====================
-async function queryElection(browser, nid) {
-  const page = await browser.newPage();
-  await page.goto(ELECTION_URL, { waitUntil: "domcontentloaded" });
-
+// ==================== الدالة الأساسية باستخدام Selenium ====================
+async function queryElection(driver, nid, screenshotPath) {
   try {
-    await page.waitForSelector("iframe", { timeout: 8000 });
-    const frames = page.frames();
-    const gadgetFrame = frames.find((f) => f.url().includes("gadget"));
+    // افتح صفحة الاستعلام
+    await driver.get(ELECTION_URL);
 
-    if (!gadgetFrame) throw new Error("لم يتم العثور على iframe الخاص بالاستعلام.");
+    // استنى iframe
+    const iframeElement = await driver.wait(
+      until.elementLocated(By.css("iframe")),
+      8000
+    );
 
-    await gadgetFrame.waitForSelector("#nid", { timeout: 8000 });
-    await gadgetFrame.type("#nid", nid, { delay: 30 });
-    await gadgetFrame.click("#submit_btn");
+    // ادخل جوه الـ iframe
+    await driver.switchTo().frame(iframeElement);
 
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    // استنى حقل الرقم القومي
+    const nidInput = await driver.wait(
+      until.elementLocated(By.css("#nid")),
+      8000
+    );
+    await nidInput.clear();
+    await nidInput.sendKeys(nid);
 
-    const text = await gadgetFrame.evaluate(() => document.body.innerText || "");
+    // زر الإرسال
+    const submitBtn = await driver.findElement(By.css("#submit_btn"));
+    await submitBtn.click();
+
+    // استنى النتيجة تظهر
+    await driver.sleep(2500);
+
+    // هات نص الجسم كله
+    const body = await driver.findElement(By.css("body"));
+    const text = await body.getText();
     const info = extractInfo(text);
 
-    return { page, info }; // نرجع الصفحة عشان نقدر ناخد screenshot بعدين
+    // Screenshot
+    const imageBase64 = await driver.takeScreenshot();
+    fs.writeFileSync(screenshotPath, imageBase64, "base64");
+
+    // ارجع للصفحة الأساسية للاستعلام التالي
+    await driver.switchTo().defaultContent();
+
+    return info;
   } catch (err) {
-    await page.close();
+    // حاول ترجع للـ default content عشان المتصفح يفضل صالح للاستعلامات التالية
+    try {
+      await driver.switchTo().defaultContent();
+    } catch (_) {}
     throw err;
   }
 }
@@ -232,13 +292,17 @@ app.post("/query", (req, res) => {
 
   if (!nid || !/^\d{14}$/.test(nid)) {
     log(`⚠️ طلب غير صالح: ${JSON.stringify(req.body)}`);
-    return res.status(400).json({ ok: false, message: "Invalid NID (must be 14 digits)" });
+    return res
+      .status(400)
+      .json({ ok: false, message: "Invalid NID (must be 14 digits)" });
   }
 
   enqueue({ nid, callback_url, res, order: orderCounter++ });
 });
 
-app.get("/", (req, res) => res.send("✅ API جاهز. استخدم POST /query مع x-api-key و nid."));
+app.get("/", (req, res) =>
+  res.send("✅ API جاهز. استخدم POST /query مع x-api-key و nid.")
+);
 
 // ==================== بدء التشغيل ====================
 app.listen(PORT, async () => {
