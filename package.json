@@ -1,12 +1,12 @@
 {
-  "name": "js",
+  "name": "api_info_nid",
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
   "scripts": {
-  "start": "node server.js",
-  "postinstall": "npx puppeteer browsers install chrome"
-}
+    "start": "node server.js",
+    "postinstall": "npx puppeteer browsers install chrome"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
