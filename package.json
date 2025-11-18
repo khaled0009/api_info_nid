@@ -1,12 +1,14 @@
 {
   "name": "api_info_nid",
-  "version": "1.0.0",
-  "description": "",
+  "version": "3.0.0",
+  "description": "NID Query Service with Render Chrome",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "chmod +x render-build.sh && ./render-build.sh",
+    "dev": "nodemon server.js"
   },
-  "keywords": [],
+  "keywords": ["nid", "elections", "chrome"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -14,6 +16,13 @@
     "body-parser": "^2.2.0",
     "express": "^5.1.0",
     "node-fetch": "^3.3.2",
-    "puppeteer": "21.10.0"
+    "puppeteer": "^21.10.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
