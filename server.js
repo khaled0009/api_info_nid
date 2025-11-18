@@ -10,7 +10,6 @@ const bodyParser = require("body-parser");
 const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
 const fs = require("fs");
-const path = require("path");
 
 // ==================== إعدادات عامة ====================
 const PORT = process.env.PORT || 3000;
@@ -268,5 +267,6 @@ app.listen(PORT, async () => {
   log(`🚀 السيرفر شغال على http://localhost:${PORT}`);
   log(`🔑 استخدم API Key: ${API_KEY}`);
 });
+
 
 
