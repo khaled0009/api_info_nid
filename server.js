@@ -90,10 +90,12 @@ let busyBrowsers = new Set();
 
 async function createBrowser() {
   return await puppeteer.launch({
-    headless: true,
+    headless: "new",
     args: ["--no-sandbox", "--disable-setuid-sandbox"]
   });
 }
+
+
 
 async function initBrowserPool() {
   log("🔧 جاري إنشاء pool المتصفحات...");
