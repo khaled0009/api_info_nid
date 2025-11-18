@@ -100,11 +100,22 @@ let browserPool = [];
 let busyBrowsers = new Set();
 
 async function createBrowser() {
-  return await puppeteer.launch({
+  const launchOptions = {
     headless: "new",
     args: ["--no-sandbox", "--disable-setuid-sandbox"]
-  });
+  };
+
+  // لو محدد مسار كروم في .env هيستخدمه
+  if (CHROME_BIN) {
+    launchOptions.executablePath = CHROME_BIN;
+    log(`ℹ️ استخدام Chrome من المسار: ${CHROME_BIN}`);
+  } else {
+    log("ℹ️ استخدام Chromium الافتراضي بتاع Puppeteer");
+  }
+
+  return await puppeteer.launch(launchOptions);
 }
+
 
 
 
@@ -257,4 +268,5 @@ app.listen(PORT, async () => {
   log(`🚀 السيرفر شغال على http://localhost:${PORT}`);
   log(`🔑 استخدم API Key: ${API_KEY}`);
 });
+
 
