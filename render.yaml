@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: election-api
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: API_KEY
+        value: supersecretkey
+      - key: GOOGLE_API_KEY
+        value: YOUR_GOOGLE_API_KEY

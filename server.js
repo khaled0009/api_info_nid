@@ -3,13 +3,12 @@
  * Proprietary and Confidential
  */
 
-require("dotenv").config();
-const path = require("path");
 const express = require("express");
 const bodyParser = require("body-parser");
 const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
 const fs = require("fs");
+const path = require("path");
 
 // ==================== إعدادات عامة ====================
 const PORT = process.env.PORT || 3000;
@@ -21,15 +20,6 @@ const PUBLIC_DIR = "./public/assets";
 const LOG_FILE = "./log.txt";
 const MAX_BROWSERS = 3;
 const QUEUE_INTERVAL = 500;
-
-const CHROME_BIN = process.env.CHROME_BIN
-  ? path.join(__dirname, process.env.CHROME_BIN)
-  : null;
-
-const CHROMEDRIVER_PATH = process.env.CHROMEDRIVER_PATH
-  ? path.join(__dirname, process.env.CHROMEDRIVER_PATH)
-  : null;
-
 
 // إنشاء المجلدات لو مش موجودة
 for (const dir of [RESULTS_DIR, PUBLIC_DIR]) {
@@ -99,24 +89,11 @@ let browserPool = [];
 let busyBrowsers = new Set();
 
 async function createBrowser() {
-  const launchOptions = {
-    headless: "new",
+  return await puppeteer.launch({
+    headless: true,
     args: ["--no-sandbox", "--disable-setuid-sandbox"]
-  };
-
-  // لو محدد مسار كروم في .env هيستخدمه
-  if (CHROME_BIN) {
-    launchOptions.executablePath = CHROME_BIN;
-    log(`ℹ️ استخدام Chrome من المسار: ${CHROME_BIN}`);
-  } else {
-    log("ℹ️ استخدام Chromium الافتراضي بتاع Puppeteer");
-  }
-
-  return await puppeteer.launch(launchOptions);
+  });
 }
-
-
-
 
 async function initBrowserPool() {
   log("🔧 جاري إنشاء pool المتصفحات...");
@@ -267,6 +244,3 @@ app.listen(PORT, async () => {
   log(`🚀 السيرفر شغال على http://localhost:${PORT}`);
   log(`🔑 استخدم API Key: ${API_KEY}`);
 });
-
-
-
