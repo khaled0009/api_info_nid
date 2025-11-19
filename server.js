@@ -139,7 +139,7 @@ async function processQueue() {
     await result.page.screenshot({ path: screenshotPath });
     await result.page.close();
 
-    const screenshotLink = `https://denisse-tombless-unseriously.ngrok-free.dev/assets/${screenshotName}`;
+    const screenshotLink = `https://api-info-nid.onrender.com/assets/${screenshotName}`;
 
     const payload = {
       order,
